@@ -3,7 +3,7 @@ name = "visprak"
 description = "Code for the praktikum on visual representation learning"
 version = "0.0.1rc1"
 dependencies = [
-    "torch>=2.5.0, <2.6.0",
+    "torch",
     "torchvision",
     "diffusers>=0.31.0",
     "with-argparse>=1.0.0rc1",
