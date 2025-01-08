@@ -21,6 +21,7 @@ from diffusers.training_utils import EMAModel
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.torch_utils import is_compiled_module
 from packaging import version
+from torch.utils.data import DataLoader
 from torchvision import transforms
 from tqdm import tqdm
 from transformers import CLIPImageProcessor, CLIPVisionModel
@@ -28,6 +29,7 @@ from transformers.utils import ContextManagers
 from with_argparse import with_dataclass
 
 from visprak.args import VisRepLeaArgs
+from visprak.metrics import log_validation
 from visprak.models.ijepa.modeling_ijepa import IJEPAModel
 from visprak.utils import (
     DATASET_NAME_MAPPING,
@@ -317,10 +319,20 @@ def main(args: VisRepLeaArgs):
         ]
     )
 
+    # Preprocessing for the frozen image encoder (CLIP/I-JEPA)
+    # [ ... and also for test/validation ]
     image_processor = CLIPImageProcessor(
         True,
         size={"shortest_edge": args.resolution},  # todo: hardcoded value
     )
+
+    def preprocess_test(examples):
+        images = [image.convert("RGB") for image in examples[image_column]]
+        examples["images"] = [
+            image_processor.preprocess(image, return_tensors="pt")["pixel_values"]
+            for image in images
+        ]
+        return examples
 
     def preprocess_train(examples):
         images = [image.convert("RGB") for image in examples[image_column]]
@@ -338,8 +350,15 @@ def main(args: VisRepLeaArgs):
                 .shuffle(seed=args.seed)
                 .select(range(args.max_train_samples))
             )
+        if args.max_test_samples is not None:
+            dataset["test"] = (
+                dataset["test"]
+                .shuffle(seed=args.seed)
+                .select(range(args.max_test_samples))
+            )
         # Set the training transforms
         train_dataset = dataset["train"].with_transform(preprocess_train)
+        test_dataset = dataset["test"].with_transform(preprocess_test)
 
     def collate_fn(examples):
         pixel_values = torch.stack([example["pixel_values"] for example in examples])
@@ -355,12 +374,29 @@ def main(args: VisRepLeaArgs):
             "condition_pixel_values": condition_pixel_values,
         }
 
+    def test_collate_fn(examples):
+        if examples[0]["images"].dim() > 3:
+            images = torch.cat([example["images"] for example in examples], dim=0)
+        else:
+            images = torch.stack([example["images"] for example in examples])
+        images = images.to(memory_format=torch.contiguous_format).float()
+        return {"images": images}
+
     # DataLoaders creation:
-    train_dataloader = torch.utils.data.DataLoader(
+    train_dataloader = DataLoader(
         train_dataset,
         shuffle=True,
         collate_fn=collate_fn,
         batch_size=args.train_batch_size,
+        num_workers=args.dataloader_num_workers,
+    )
+
+    # Create a test DataLoader as well to use during training (just for some validation) as well as after (full run)
+    test_dataloader = DataLoader(
+        test_dataset,
+        shuffle=False,
+        collate_fn=test_collate_fn,
+        batch_size=args.test_batch_size,
         num_workers=args.dataloader_num_workers,
     )
 
@@ -502,14 +538,22 @@ def main(args: VisRepLeaArgs):
         disable=not accelerator.is_local_main_process,
     )
 
+    train_metrics_loss_history = list()
+    test_interval_size = args.train_test_interval
+    if isinstance(test_interval_size, float):
+        test_interval_size = int(test_interval_size * args.max_train_steps)
+        accelerator.print(f"Testing every {test_interval_size} steps")
+    test_interval_step = 0
+
     for epoch in range(first_epoch, args.num_train_epochs):
         train_loss = 0.0
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(unet):
                 # Convert images to latent space
-                latents = vae.encode(
-                    batch["pixel_values"].to(weight_dtype)
-                ).latent_dist.sample()
+                with torch.no_grad():
+                    latents = vae.encode(
+                        batch["pixel_values"].to(weight_dtype)
+                    ).latent_dist.sample()
                 latents = latents * vae.config.scaling_factor
 
                 # Sample noise that we'll add to the latents
@@ -543,11 +587,11 @@ def main(args: VisRepLeaArgs):
                 else:
                     noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
 
-                # Get the text embedding for conditioning
-                encoder_hidden_states = image_encoder(batch["condition_pixel_values"])[
-                    0
-                ]
-                # seq_len = math.sqrt(encoder_hidden_states.size(1))
+                # Get the image embedding for conditioning
+                with torch.no_grad():
+                    encoder_hidden_states = image_encoder(
+                        batch["condition_pixel_values"]
+                    )[0]
 
                 # Get the target for loss depending on the prediction type
                 if args.prediction_type is not None:
@@ -677,84 +721,43 @@ def main(args: VisRepLeaArgs):
             }
             progress_bar.set_postfix(**logs)
 
+            if (global_step // test_interval_size) > test_interval_step:
+                if accelerator.is_main_process:
+                    log_validation(
+                        vae,
+                        unet,
+                        image_encoder,
+                        image_processor,
+                        noise_scheduler,
+                        args,
+                        accelerator,
+                        weight_dtype,
+                        global_step,
+                        test_dataloader,
+                        save_model=False,
+                    )
+                accelerator.wait_for_everyone()
+                test_interval_step = global_step // test_interval_size
+
             if global_step >= args.max_train_steps:
                 break
-
-        if accelerator.is_main_process:
-            if (
-                args.validation_prompts is not None
-                and epoch % args.validation_epochs == 0
-            ):
-                if args.use_ema:
-                    # Store the UNet parameters temporarily and load the EMA parameters to perform inference.
-                    ema_unet.store(unet.parameters())
-                    ema_unet.copy_to(unet.parameters())
-                log_validation(
-                    vae,
-                    text_encoder,
-                    tokenizer,
-                    unet,
-                    args,
-                    accelerator,
-                    weight_dtype,
-                    global_step,
-                )
-                if args.use_ema:
-                    # Switch back to the original UNet parameters.
-                    ema_unet.restore(unet.parameters())
 
     # Create the pipeline using the trained modules and save it.
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
-        unet = unwrap_model(unet)
-        if args.use_ema:
-            ema_unet.copy_to(unet.parameters())
-
-        pipeline = StableDiffusionPipeline.from_pretrained(
-            args.pretrained_model_name_or_path,
-            text_encoder=text_encoder,
-            vae=vae,
-            unet=unet,
-            revision=args.revision,
-            variant=args.variant,
+        log_validation(
+            vae,
+            unet,
+            image_encoder,
+            image_processor,
+            noise_scheduler,
+            args,
+            accelerator,
+            weight_dtype,
+            global_step,
+            test_dataloader,
+            save_model=False,
         )
-        pipeline.save_pretrained(args.output_dir)
-
-        # Run a final round of inference.
-        images = []
-        if args.validation_prompts is not None:
-            logger.info("Running inference for collecting generated images...")
-            pipeline = pipeline.to(accelerator.device)
-            pipeline.torch_dtype = weight_dtype
-            pipeline.set_progress_bar_config(disable=True)
-
-            if args.enable_xformers_memory_efficient_attention:
-                pipeline.enable_xformers_memory_efficient_attention()
-
-            if args.seed is None:
-                generator = None
-            else:
-                generator = torch.Generator(device=accelerator.device).manual_seed(
-                    args.seed
-                )
-
-            for i in range(len(args.validation_prompts)):
-                with torch.autocast("cuda"):
-                    image = pipeline(
-                        args.validation_prompts[i],
-                        num_inference_steps=20,
-                        generator=generator,
-                    ).images[0]
-                images.append(image)
-
-        if args.push_to_hub:
-            save_model_card(args, repo_id, images, repo_folder=args.output_dir)
-            upload_folder(
-                repo_id=repo_id,
-                folder_path=args.output_dir,
-                commit_message="End of training",
-                ignore_patterns=["step_*", "epoch_*"],
-            )
 
     accelerator.end_training()
 

@@ -22,6 +22,7 @@ class VisRepLeaArgs:
     revision: str = None
     variant: str = None
     max_train_samples: int | None = None
+    max_test_samples: int | None = None
     output_dir: str = "visreplea_models"
     logging_dir: str = "logs"
     cache_dir: str = None
@@ -31,8 +32,13 @@ class VisRepLeaArgs:
     random_flip: bool = False
     gradient_checkpointing: bool = False
     train_batch_size: int = 16
+    test_batch_size: int = 16
     num_train_epochs: int = 100
     max_train_steps: int | None = None
+    train_test_interval: float = 0.1
+    train_test_fraction: float = (
+        0.05  # during training, validate just 5% of the testing data
+    )
     gradient_accumulation_steps: int = 1
     learning_rate: float = 1e-4
     scale_lr: bool = False
