@@ -130,7 +130,6 @@ def log_validation(
             )
         orig_images.extend(batch["images"].unbind())
         images.extend(to_tensor(generation.images))
-        break
 
     images = torch.stack(images, dim=0)
     orig_images = torch.stack(orig_images, dim=0)
