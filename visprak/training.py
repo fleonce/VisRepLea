@@ -26,6 +26,7 @@ from torchvision import transforms
 from tqdm import tqdm
 from transformers import CLIPImageProcessor, CLIPVisionModel
 from transformers.utils import ContextManagers
+from transformers.utils.constants import OPENAI_CLIP_MEAN, OPENAI_CLIP_STD
 from with_argparse import with_dataclass
 
 from visprak.args import VisRepLeaArgs
@@ -315,7 +316,9 @@ def main(args: VisRepLeaArgs):
                 else transforms.Lambda(lambda x: x)
             ),
             transforms.ToTensor(),
-            transforms.Normalize([0.5], [0.5]),
+            transforms.Normalize(
+                OPENAI_CLIP_MEAN, OPENAI_CLIP_STD
+            ),  # todo maybe this should be [0.5], [0.5]
         ]
     )
 

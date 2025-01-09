@@ -19,4 +19,4 @@ requires-python = ">= 3.10"
 repository = "https://github.com/fleonce/VisPrakLea"
 
 [tool.setuptools]
-packages = ["visprak"]
+packages = ["visprak", "visprak.models.ijepa"]
