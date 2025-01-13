@@ -111,7 +111,7 @@ def preprocess_inputs(args: PreprocessArgs):
     def preprocess_fn(examples, is_train: bool):
         images = [image.convert("RGB") for image in examples[image_column]]
         transform_fn = train_transforms if is_train else test_transforms
-        examples["pixel_values"] = transform_fn(images)
+        examples["pixel_values"] = [transform_fn(image) for image in images]
         return examples
 
     if args.max_train_samples is not None:
