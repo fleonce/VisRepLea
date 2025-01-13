@@ -14,7 +14,7 @@ from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.state import AcceleratorState
 from accelerate.utils import ProjectConfiguration, set_seed
-from datasets import load_dataset
+from datasets import load_from_disk
 from diffusers import AutoencoderKL, DDPMScheduler, UNet2DConditionModel
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel
@@ -22,20 +22,14 @@ from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.torch_utils import is_compiled_module
 from packaging import version
 from torch.utils.data import DataLoader
-from torchvision import transforms
+from torchvision.transforms import v2 as transforms
 from tqdm import tqdm
-from transformers import CLIPImageProcessor, CLIPVisionModel
 from transformers.utils import ContextManagers
 from with_argparse import with_dataclass
 
 from visprak.args import VisRepLeaArgs
 from visprak.metrics import log_validation
-from visprak.models.ijepa.modeling_ijepa import IJEPAModel
-from visprak.utils import (
-    DATASET_NAME_MAPPING,
-    DATASET_URL_MAPPING,
-    freeze_unet_except_for_cross_attn,
-)
+from visprak.utils import freeze_unet_except_for_cross_attn
 
 logger = get_logger(__name__, log_level="INFO")
 
@@ -118,25 +112,6 @@ def main(args: VisRepLeaArgs):
     # `from_pretrained` So CLIPTextModel and AutoencoderKL will not enjoy the parameter sharding
     # across multiple gpus and only UNet2DConditionModel will get ZeRO sharded.
     with ContextManagers(deepspeed_zero_init_disabled_context_manager()):
-        if args.model_type == "clip":
-            image_encoder: CLIPVisionModel
-            image_encoder = CLIPVisionModel.from_pretrained(args.image_model)
-            #             embeddings = image_encoder.vision_model.embeddings
-            #             patch_size = embeddings.patch_size
-            #             num_patches = args.resolution // patch_size
-            #             num_positions = num_patches + 1
-            #             position_ids = torch.arange(num_positions)
-            #             position_ids[-1] = embeddings.num_patches
-            #
-            #             embeddings.image_size = args.resolution
-            #             embeddings.num_patches = num_patches
-            #             embeddings.num_positions = num_positions
-            #             embeddings.position_ids = position_ids.expand((1, -1))
-        elif args.model_type == "i-jepa":
-            image_encoder = IJEPAModel.from_pretrained(args.image_model)
-        else:
-            raise ValueError("Invalid model type " + args.model_type)
-
         vae = AutoencoderKL.from_pretrained(
             args.diffusion_model,
             subfolder="vae",
@@ -150,7 +125,6 @@ def main(args: VisRepLeaArgs):
 
     # Freeze vae and text_encoder and set unet to trainable
     vae.requires_grad_(False)
-    image_encoder.requires_grad_(False)
     freeze_unet_except_for_cross_attn(unet)
     unet.train()
 
@@ -270,100 +244,33 @@ def main(args: VisRepLeaArgs):
 
     # In distributed training, the load_dataset function guarantees that only one local process can concurrently
     # download the dataset.
-    if args.dataset in {"cifar10", "imagenet"}:
-        dataset_url = DATASET_URL_MAPPING.get(args.dataset, None)
-        print(dataset_url, args.dataset, args.cache_dir, args.train_data_dir)
-        dataset = load_dataset(
-            dataset_url,
-            cache_dir=args.cache_dir,
-            #            data_dir=args.train_data_dir,
-        )
-    else:
-        raise NotImplementedError
-
-    if False:
-        data_files = {}
-        if args.train_data_dir is not None:
-            data_files["train"] = os.path.join(args.train_data_dir, "**")
-        dataset = load_dataset(
-            "imagefolder",
-            data_files=data_files,
-            cache_dir=args.cache_dir,
-        )
-        # See more about loading custom images at
-        # https://huggingface.co/docs/datasets/v2.4.0/en/image_load#imagefolder
-
-    # Preprocessing the datasets.
-    # We need to tokenize inputs and targets.
-    column_names = dataset["train"].column_names
-
-    # 6. Get the column names for input/target.
-    dataset_columns = DATASET_NAME_MAPPING.get(args.dataset, None)
-    if args.image_column is None:
-        image_column = (
-            dataset_columns[0] if dataset_columns is not None else column_names[0]
-        )
-    else:
-        image_column = args.image_column
-        if image_column not in column_names:
-            raise ValueError(
-                f"--image_column' value '{args.image_column}' needs to be one of: {', '.join(column_names)}"
+    dataset = {
+        "train": (
+            load_from_disk(
+                os.path.join(args.train_data_dir, "train"),
             )
+        ),
+        "test": (
+            load_from_disk(
+                os.path.join(args.train_data_dir, "test"),
+            ).with_format("torch")
+        ),
+    }
 
     # Preprocessing the datasets.
     train_transforms = transforms.Compose(
         [
-            transforms.Resize(
-                args.resolution, interpolation=transforms.InterpolationMode.BILINEAR
-            ),
-            (
-                transforms.CenterCrop(args.resolution)
-                if args.center_crop
-                else transforms.RandomCrop(args.resolution)
-            ),
-            (
-                transforms.RandomHorizontalFlip()
-                if args.random_flip
-                else transforms.Lambda(lambda x: x)
-            ),
-            transforms.ToTensor(),
+            transforms.ToDtype(torch.uint8),
+            transforms.ToDtype(torch.float32, scale=True),
             transforms.Normalize([0.5], [0.5]),
         ]
     )
     test_transforms = transforms.Compose(
         [
-            transforms.Resize(
-                args.resolution, interpolation=transforms.InterpolationMode.BILINEAR
-            ),
-            transforms.ToTensor(),
+            transforms.ToDtype(torch.uint8),
+            transforms.ToDtype(torch.float32, scale=True),
         ]
     )
-
-    # Preprocessing for the frozen image encoder (CLIP/I-JEPA)
-    # [ ... and also for test/validation ]
-    image_processor = CLIPImageProcessor(
-        True,
-        size={"shortest_edge": args.resolution},  # todo: hardcoded value
-        crop_size={"width": args.resolution, "height": args.resolution},
-    )
-
-    def preprocess_test(examples):
-        images = [image.convert("RGB") for image in examples[image_column]]
-        examples["clip_values"] = [
-            image_processor.preprocess(image, return_tensors="pt")["pixel_values"]
-            for image in images
-        ]
-        examples["sd_values"] = [test_transforms(image) for image in images]
-        return examples
-
-    def preprocess_train(examples):
-        images = [image.convert("RGB") for image in examples[image_column]]
-        examples["pixel_values"] = [train_transforms(image) for image in images]
-        examples["condition_pixel_values"] = [
-            image_processor.preprocess(image, return_tensors="pt")["pixel_values"]
-            for image in images
-        ]
-        return examples
 
     with accelerator.main_process_first():
         if args.max_train_samples is not None:
@@ -378,37 +285,31 @@ def main(args: VisRepLeaArgs):
                 .shuffle(seed=args.seed)
                 .select(range(args.max_test_samples))
             )
-        # Set the training transforms
-        train_dataset = dataset["train"].with_transform(preprocess_train)
-        test_dataset = dataset["test"].with_transform(preprocess_test)
+
+    train_dataset = dataset["train"]
+    test_dataset = dataset["test"]
 
     def collate_fn(examples):
-        pixel_values = torch.stack([example["pixel_values"] for example in examples])
-        pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
-        condition_pixel_values = torch.cat(
-            [example["condition_pixel_values"] for example in examples], dim=0
+        pixel_values = train_transforms(
+            [example["pixel_values"] for example in examples]
         )
-        condition_pixel_values = condition_pixel_values.to(
-            memory_format=torch.contiguous_format
-        ).float()
+        pixel_values = torch.stack(pixel_values)
+        pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
+
+        latent = torch.stack([example["latent"] for example in examples])
         return {
             "pixel_values": pixel_values,
-            "condition_pixel_values": condition_pixel_values,
+            "latent": latent,
         }
 
     def test_collate_fn(examples):
-        if examples[0]["clip_values"].dim() > 3:
-            images = torch.cat([example["clip_values"] for example in examples], dim=0)
-        else:
-            images = torch.stack([example["clip_values"] for example in examples])
-        images = images.to(memory_format=torch.contiguous_format).float()
-        if examples[0]["sd_values"].dim() > 3:
-            sd_images = torch.cat([example["sd_values"] for example in examples], dim=0)
-        else:
-            sd_images = torch.stack([example["sd_values"] for example in examples])
-        sd_images = sd_images.to(memory_format=torch.contiguous_format).float()
-
-        return {"clip_images": images, "sd_images": sd_images}
+        latent = torch.stack([example["latent"] for example in examples])
+        pixel_values = test_transforms(
+            [example["pixel_values"] for example in examples]
+        )
+        pixel_values = torch.stack(pixel_values)
+        pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
+        return {"latent": latent, "sd_images": pixel_values}
 
     # DataLoaders creation:
     train_dataloader = DataLoader(
@@ -477,7 +378,6 @@ def main(args: VisRepLeaArgs):
         args.mixed_precision = accelerator.mixed_precision
 
     # Move text_encode and vae to gpu and cast to weight_dtype
-    image_encoder.to(accelerator.device, dtype=weight_dtype)
     vae.to(accelerator.device, dtype=weight_dtype)
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
@@ -616,10 +516,7 @@ def main(args: VisRepLeaArgs):
                     noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
 
                 # Get the image embedding for conditioning
-                with torch.no_grad():
-                    encoder_hidden_states = image_encoder(
-                        batch["condition_pixel_values"]
-                    )[0]
+                encoder_hidden_states = batch["latent"]
 
                 # Get the target for loss depending on the prediction type
                 if args.prediction_type is not None:
@@ -754,8 +651,6 @@ def main(args: VisRepLeaArgs):
                     log_validation(
                         vae,
                         unet,
-                        image_encoder,
-                        image_processor,
                         noise_scheduler,
                         args,
                         accelerator,
@@ -776,8 +671,6 @@ def main(args: VisRepLeaArgs):
         log_validation(
             vae,
             unet,
-            image_encoder,
-            image_processor,
             noise_scheduler,
             args,
             accelerator,

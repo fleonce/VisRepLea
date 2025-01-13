@@ -10,47 +10,25 @@ from diffusers import (
 )
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
 from scipy import linalg
-from torch.nn import Module
 from torch.utils.data import DataLoader
 from torchvision.transforms.v2 import ToPILImage, ToTensor
-from transformers import CLIPImageProcessor, CLIPVisionModel
 
 from visprak.args import VisRepLeaArgs
-
-
-class CLIPVisionModelWrapper(Module):
-    def __init__(self, vision_model: CLIPVisionModel):
-        super().__init__()
-        self.vision_model = vision_model
-
-    def __call__(self, *args, **kwargs):
-        model_outputs = self.vision_model(*args, **kwargs)
-        if not hasattr(model_outputs, "image_embeds"):
-            if not hasattr(model_outputs, "last_hidden_state"):
-                raise ValueError(f"Cannot deal with {model_outputs}")
-            setattr(model_outputs, "image_embeds", model_outputs.last_hidden_state)
-        return model_outputs
-
-    def __getattr__(self, item):
-        try:
-            return super().__getattr__(item)
-        except AttributeError:
-            return getattr(self.vision_model, item)
 
 
 class StableDiffusionImageVariationPipeline(StableDiffusionImageVariationPipeline):
     def _encode_image(
         self, image, device, num_images_per_prompt, do_classifier_free_guidance
     ):
-        dtype = next(self.image_encoder.parameters()).dtype
+        dtype = torch.float32  # next(self.image_encoder.parameters()).dtype
 
         if not isinstance(image, torch.Tensor):
             image = self.feature_extractor(
                 images=image, return_tensors="pt"
             ).pixel_values
 
-        image = image.to(device=device, dtype=dtype)
-        image_embeddings = self.image_encoder(image).image_embeds
+        image_embeddings = image.to(device=device, dtype=dtype)
+        # image_embeddings = self.image_encoder(image).image_embeds
         # [BS, hidden dimension]
         if image_embeddings.dim() <= 2:
             image_embeddings = image_embeddings.unsqueeze(1)
@@ -77,8 +55,6 @@ class StableDiffusionImageVariationPipeline(StableDiffusionImageVariationPipelin
 def log_validation(
     vae: AutoencoderKL,
     unet: UNet2DConditionModel,
-    image_encoder: CLIPVisionModel,
-    image_processor: CLIPImageProcessor,
     noise_scheduler: DDPMScheduler,
     args: VisRepLeaArgs,
     accelerator: Accelerator,
@@ -94,9 +70,9 @@ def log_validation(
     """
     pipeline = StableDiffusionImageVariationPipeline(
         vae=vae,
-        image_encoder=CLIPVisionModelWrapper(image_encoder),
+        image_encoder=None,
         unet=unet,
-        feature_extractor=image_processor,
+        feature_extractor=None,
         scheduler=noise_scheduler,
         safety_checker=None,
         requires_safety_checker=False,
@@ -122,7 +98,7 @@ def log_validation(
         with torch.autocast("cuda", weight_dtype):
             generation: StableDiffusionPipelineOutput
             generation = pipeline(
-                batch["clip_images"].to(accelerator.device),
+                batch["latent"].to(accelerator.device),
                 num_inference_steps=10,
                 generator=generator,
                 width=args.resolution,

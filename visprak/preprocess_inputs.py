@@ -1,4 +1,3 @@
-import math
 import os.path
 from dataclasses import dataclass
 from functools import partial
@@ -6,7 +5,7 @@ from typing import Literal
 
 import torch
 import torchvision.transforms.v2 as transforms
-from datasets import Dataset, load_dataset
+from datasets import load_dataset
 from transformers import CLIPVisionModel
 from transformers.utils.constants import OPENAI_CLIP_MEAN, OPENAI_CLIP_STD
 from with_argparse import with_dataclass
@@ -28,6 +27,9 @@ class PreprocessArgs:
     center_crop: bool = False
     random_flip: bool = False
     shard_size: int = 5000
+    seed: int = 42
+    max_train_samples: int | None = None
+    max_test_samples: int | None = None
 
 
 @with_dataclass(dataclass=PreprocessArgs)
@@ -76,6 +78,7 @@ def preprocess_inputs(args: PreprocessArgs):
                 else transforms.Lambda(lambda x: x)
             ),
             transforms.ToImage(),
+            transforms.ToDtype(torch.uint8, False),
         ]
     )
     test_transforms = transforms.Compose(
@@ -84,14 +87,9 @@ def preprocess_inputs(args: PreprocessArgs):
                 args.resolution, interpolation=transforms.InterpolationMode.BILINEAR
             ),
             transforms.ToImage(),
+            transforms.ToDtype(torch.uint8, False),
         ]
     )
-    #             transforms.Normalize(
-    #                 OPENAI_CLIP_MEAN, OPENAI_CLIP_STD
-    #             ),
-    #             transforms.Normalize(
-    #                 OPENAI_CLIP_MEAN, OPENAI_CLIP_STD
-    #             ),  # todo maybe this should be [0.5], [0.5]
 
     embedding_transforms = transforms.Compose(
         [
@@ -115,6 +113,17 @@ def preprocess_inputs(args: PreprocessArgs):
         transform_fn = train_transforms if is_train else test_transforms
         examples["pixel_values"] = transform_fn(images)
         return examples
+
+    if args.max_train_samples is not None:
+        dataset["train"] = (
+            dataset["train"]
+            .shuffle(seed=args.seed)
+            .select(range(args.max_train_samples))
+        )
+    if args.max_test_samples is not None:
+        dataset["test"] = (
+            dataset["test"].shuffle(seed=args.seed).select(range(args.max_test_samples))
+        )
 
     test_dataset = (
         dataset["test"]
@@ -150,23 +159,8 @@ def preprocess_inputs(args: PreprocessArgs):
     train_dataset = train_dataset.map(
         embedding_fn, batched=True, batch_size=args.batch_size
     )
-
-    if args.shard_size:
-        save_sharded(
-            train_dataset, args.shard_size, os.path.join(args.data_dir, "train")
-        )
-        save_sharded(test_dataset, args.shard_size, os.path.join(args.data_dir, "test"))
-    else:
-        train_dataset.save_to_disk(os.path.join(args.data_dir, "train"))
-        test_dataset.save_to_disk(os.path.join(args.data_dir, "test"))
-
-
-def save_sharded(dataset: Dataset, shard_size: int, save_path: str):
-    num_shards = math.ceil(len(dataset) / shard_size)
-    for shard_idx in range(num_shards):
-        dataset.shard(num_shards, shard_idx, contiguous=True).save_to_disk(
-            f"{save_path}_s{shard_idx}"
-        )
+    train_dataset.save_to_disk(os.path.join(args.data_dir, "train"))
+    test_dataset.save_to_disk(os.path.join(args.data_dir, "test"))
 
 
 if __name__ == "__main__":
