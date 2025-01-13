@@ -65,7 +65,8 @@ def preprocess_inputs(args: PreprocessArgs):
     train_transforms = transforms.Compose(
         [
             transforms.Resize(
-                args.resolution, interpolation=transforms.InterpolationMode.BILINEAR
+                (args.resolution, args.resolution),
+                interpolation=transforms.InterpolationMode.BILINEAR,
             ),
             (
                 transforms.CenterCrop(args.resolution)
@@ -84,7 +85,8 @@ def preprocess_inputs(args: PreprocessArgs):
     test_transforms = transforms.Compose(
         [
             transforms.Resize(
-                args.resolution, interpolation=transforms.InterpolationMode.BILINEAR
+                (args.resolution, args.resolution),
+                interpolation=transforms.InterpolationMode.BILINEAR,
             ),
             transforms.ToImage(),
             transforms.ToDtype(torch.uint8, False),
