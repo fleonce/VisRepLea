@@ -26,7 +26,6 @@ from torchvision import transforms
 from tqdm import tqdm
 from transformers import CLIPImageProcessor, CLIPVisionModel
 from transformers.utils import ContextManagers
-from transformers.utils.constants import OPENAI_CLIP_MEAN, OPENAI_CLIP_STD
 from with_argparse import with_dataclass
 
 from visprak.args import VisRepLeaArgs
@@ -120,7 +119,19 @@ def main(args: VisRepLeaArgs):
     # across multiple gpus and only UNet2DConditionModel will get ZeRO sharded.
     with ContextManagers(deepspeed_zero_init_disabled_context_manager()):
         if args.model_type == "clip":
+            image_encoder: CLIPVisionModel
             image_encoder = CLIPVisionModel.from_pretrained(args.image_model)
+            #             embeddings = image_encoder.vision_model.embeddings
+            #             patch_size = embeddings.patch_size
+            #             num_patches = args.resolution // patch_size
+            #             num_positions = num_patches + 1
+            #             position_ids = torch.arange(num_positions)
+            #             position_ids[-1] = embeddings.num_patches
+            #
+            #             embeddings.image_size = args.resolution
+            #             embeddings.num_patches = num_patches
+            #             embeddings.num_positions = num_positions
+            #             embeddings.position_ids = position_ids.expand((1, -1))
         elif args.model_type == "i-jepa":
             image_encoder = IJEPAModel.from_pretrained(args.image_model)
         else:
@@ -316,9 +327,15 @@ def main(args: VisRepLeaArgs):
                 else transforms.Lambda(lambda x: x)
             ),
             transforms.ToTensor(),
-            transforms.Normalize(
-                OPENAI_CLIP_MEAN, OPENAI_CLIP_STD
-            ),  # todo maybe this should be [0.5], [0.5]
+            transforms.Normalize([0.5], [0.5]),
+        ]
+    )
+    test_transforms = transforms.Compose(
+        [
+            transforms.Resize(
+                args.resolution, interpolation=transforms.InterpolationMode.BILINEAR
+            ),
+            transforms.ToTensor(),
         ]
     )
 
@@ -327,14 +344,16 @@ def main(args: VisRepLeaArgs):
     image_processor = CLIPImageProcessor(
         True,
         size={"shortest_edge": args.resolution},  # todo: hardcoded value
+        crop_size={"width": args.resolution, "height": args.resolution},
     )
 
     def preprocess_test(examples):
         images = [image.convert("RGB") for image in examples[image_column]]
-        examples["images"] = [
+        examples["clip_values"] = [
             image_processor.preprocess(image, return_tensors="pt")["pixel_values"]
             for image in images
         ]
+        examples["sd_values"] = [test_transforms(image) for image in images]
         return examples
 
     def preprocess_train(examples):
@@ -378,12 +397,18 @@ def main(args: VisRepLeaArgs):
         }
 
     def test_collate_fn(examples):
-        if examples[0]["images"].dim() > 3:
-            images = torch.cat([example["images"] for example in examples], dim=0)
+        if examples[0]["clip_values"].dim() > 3:
+            images = torch.cat([example["clip_values"] for example in examples], dim=0)
         else:
-            images = torch.stack([example["images"] for example in examples])
+            images = torch.stack([example["clip_values"] for example in examples])
         images = images.to(memory_format=torch.contiguous_format).float()
-        return {"images": images}
+        if examples[0]["sd_values"].dim() > 3:
+            sd_images = torch.cat([example["sd_values"] for example in examples], dim=0)
+        else:
+            sd_images = torch.stack([example["sd_values"] for example in examples])
+        sd_images = sd_images.to(memory_format=torch.contiguous_format).float()
+
+        return {"clip_images": images, "sd_images": sd_images}
 
     # DataLoaders creation:
     train_dataloader = DataLoader(

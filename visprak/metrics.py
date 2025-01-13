@@ -12,7 +12,7 @@ from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
 from scipy import linalg
 from torch.nn import Module
 from torch.utils.data import DataLoader
-from torchvision.transforms.v2 import ToTensor
+from torchvision.transforms.v2 import ToPILImage, ToTensor
 from transformers import CLIPImageProcessor, CLIPVisionModel
 
 from visprak.args import VisRepLeaArgs
@@ -122,18 +122,25 @@ def log_validation(
         with torch.autocast("cuda", weight_dtype):
             generation: StableDiffusionPipelineOutput
             generation = pipeline(
-                batch["images"].to(accelerator.device),
+                batch["clip_images"].to(accelerator.device),
                 num_inference_steps=10,
                 generator=generator,
                 width=args.resolution,
                 height=args.resolution,
             )
-        orig_images.extend(batch["images"].unbind())
+        orig_images.extend(batch["sd_images"].unbind())
         images.extend(to_tensor(generation.images))
+        break
 
     images = torch.stack(images, dim=0)
     orig_images = torch.stack(orig_images, dim=0)
     mse = F.mse_loss(orig_images, images, reduction="none").mean(dim=(1, 2, 3)).mean()
+
+    to_pil = ToPILImage()
+    pil_images = [to_pil(image) for image in images]
+    orig_pil_images = [to_pil(image) for image in orig_images]
+    pil_images[0].save("abc2.png")
+    orig_pil_images[0].save("abc.png")
 
     for tracker in accelerator.trackers:
         tracker.log(
