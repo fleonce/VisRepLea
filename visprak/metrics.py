@@ -97,7 +97,7 @@ def log_validation(
     images = list()
     orig_images = list()
     to_tensor = ToTensor()
-    for batch in tqdm(test_dataloader):
+    for batch in tqdm(test_dataloader, disable=False):
         with torch.autocast("cuda", weight_dtype):
             generation: StableDiffusionPipelineOutput
             generation = pipeline(
@@ -118,7 +118,12 @@ def log_validation(
     pil_images = [to_pil(image) for image in images]
     orig_pil_images = [to_pil(image) for image in orig_images]
 
-    save_dir = os.path.join(args.output_dir, args.image_logging_dir)
+    save_dir = os.path.join(
+        args.output_dir,
+        args.image_logging_dir,
+        f"global_step_{'final' if save_model else global_step}",
+    )
+    os.makedirs(save_dir, exist_ok=True)
     for i, (image, orig_image) in enumerate(zip(pil_images, orig_pil_images)):
         image.save(os.path.join(save_dir, f"{i:05d}_output.png"))
         orig_image.save(os.path.join(save_dir, f"{i:05d}_target.png"))
