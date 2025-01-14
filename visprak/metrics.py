@@ -14,6 +14,7 @@ from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
 from scipy import linalg
 from torch.utils.data import DataLoader
 from torchvision.transforms.v2 import ToPILImage, ToTensor
+from tqdm import tqdm
 
 from visprak.args import VisRepLeaArgs
 
@@ -96,7 +97,7 @@ def log_validation(
     images = list()
     orig_images = list()
     to_tensor = ToTensor()
-    for batch in test_dataloader:
+    for batch in tqdm(test_dataloader):
         with torch.autocast("cuda", weight_dtype):
             generation: StableDiffusionPipelineOutput
             generation = pipeline(
