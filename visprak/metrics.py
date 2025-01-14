@@ -97,7 +97,9 @@ def log_validation(
     images = list()
     orig_images = list()
     to_tensor = ToTensor()
-    for batch in tqdm(test_dataloader, disable=False):
+    for batch in tqdm(
+        test_dataloader, leave=False, desc="Diffusing validation images ..."
+    ):
         with torch.autocast("cuda", weight_dtype):
             generation: StableDiffusionPipelineOutput
             generation = pipeline(
