@@ -7,6 +7,7 @@ import torch
 import torchvision.transforms.v2 as transforms
 from datasets import load_dataset
 from transformers import CLIPVisionModel
+from transformers.models.ijepa.modular_ijepa import IJepaModel
 from transformers.utils.constants import OPENAI_CLIP_MEAN, OPENAI_CLIP_STD
 from with_argparse import with_dataclass
 
@@ -106,7 +107,9 @@ def preprocess_inputs(args: PreprocessArgs):
             args.embedding_device
         )
     elif args.embedding_model == "i-jepa":
-        image_model = ...
+        image_model = IJepaModel.from_pretrained(args.embedding_model_path).to(
+            args.embedding_device
+        )
     else:
         raise NotImplementedError(args.embedding_model)
 
@@ -129,12 +132,14 @@ def preprocess_inputs(args: PreprocessArgs):
             dataset["test"].shuffle(seed=args.seed).select(range(args.max_test_samples))
         )
 
+    preprocess_desc = "Applying torchvision transforms"
     test_dataset = (
         dataset["test"]
         .map(
             partial(preprocess_fn, is_train=False),
             batched=True,
             remove_columns=column_names,
+            desc=preprocess_desc,
         )
         .with_format("torch")
     )
@@ -144,6 +149,7 @@ def preprocess_inputs(args: PreprocessArgs):
             partial(preprocess_fn, is_train=True),
             batched=True,
             remove_columns=column_names,
+            desc=preprocess_desc,
         )
         .with_format("torch")
     )
@@ -157,11 +163,18 @@ def preprocess_inputs(args: PreprocessArgs):
         examples["latent"] = outputs
         return examples
 
+    embedding_desc = "Retrieving latents from " + args.embedding_model
     test_dataset = test_dataset.map(
-        embedding_fn, batched=True, batch_size=args.batch_size
+        embedding_fn,
+        batched=True,
+        batch_size=args.batch_size,
+        desc=embedding_desc,
     )
     train_dataset = train_dataset.map(
-        embedding_fn, batched=True, batch_size=args.batch_size
+        embedding_fn,
+        batched=True,
+        batch_size=args.batch_size,
+        desc=embedding_desc,
     )
     train_dataset.save_to_disk(os.path.join(args.data_dir, "train"))
     test_dataset.save_to_disk(os.path.join(args.data_dir, "test"))

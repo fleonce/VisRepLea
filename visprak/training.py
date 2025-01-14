@@ -120,7 +120,12 @@ def main(args: VisRepLeaArgs):
         )
 
     unet = UNet2DConditionModel.from_pretrained(
-        args.diffusion_model, subfolder="unet", revision=args.non_ema_revision
+        args.diffusion_model,
+        subfolder="unet",
+        revision=args.non_ema_revision,
+        cross_attention_dim=args.cross_attention_dim,
+        ignore_mismatched_sizes=True,
+        low_cpu_mem_usage=False,  # todo talk about mismatched shapes
     )
 
     # Freeze vae and text_encoder and set unet to trainable
@@ -271,20 +276,6 @@ def main(args: VisRepLeaArgs):
             transforms.ToDtype(torch.float32, scale=True),
         ]
     )
-
-    with accelerator.main_process_first():
-        if args.max_train_samples is not None:
-            dataset["train"] = (
-                dataset["train"]
-                .shuffle(seed=args.seed)
-                .select(range(args.max_train_samples))
-            )
-        if args.max_test_samples is not None:
-            dataset["test"] = (
-                dataset["test"]
-                .shuffle(seed=args.seed)
-                .select(range(args.max_test_samples))
-            )
 
     train_dataset = dataset["train"]
     test_dataset = dataset["test"]

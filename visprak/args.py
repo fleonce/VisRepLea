@@ -13,11 +13,9 @@ class VisRepLeaArgs:
     assignment on comparing richness of information in CLIP and I-JEPA
     """
 
-    model_type: Literal["clip", "i-jepa"]
-    dataset: Literal["cifar10", "imagenet"]
     diffusion_model: str = "CompVis/stable-diffusion-v1-4"
-    image_model: str = "openai/clip-vit-base-patch16"
 
+    cross_attention_dim: int = 768
     input_perturbation: float = 0
     revision: str = None
     variant: str = None
