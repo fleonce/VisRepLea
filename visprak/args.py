@@ -23,6 +23,7 @@ class VisRepLeaArgs:
     max_test_samples: int | None = None
     output_dir: str = "visreplea_models"
     logging_dir: str = "logs"
+    image_logging_dir: str = "images"
     cache_dir: str = None
     seed: int = 42
     resolution: int = 512

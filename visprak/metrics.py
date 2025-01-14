@@ -1,3 +1,5 @@
+import os.path
+
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -114,8 +116,11 @@ def log_validation(
     to_pil = ToPILImage()
     pil_images = [to_pil(image) for image in images]
     orig_pil_images = [to_pil(image) for image in orig_images]
-    pil_images[0].save("abc2.png")
-    orig_pil_images[0].save("abc.png")
+
+    save_dir = os.path.join(args.output_dir, args.image_logging_dir)
+    for i, (image, orig_image) in enumerate(zip(pil_images, orig_pil_images)):
+        image.save(os.path.join(save_dir, f"{i:05d}_output.png"))
+        orig_image.save(os.path.join(save_dir, f"{i:05d}_target.png"))
 
     for tracker in accelerator.trackers:
         tracker.log(
