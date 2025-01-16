@@ -94,11 +94,17 @@ def preprocess_inputs(args: PreprocessArgs):
         ]
     )
 
+    embedding_mean = (
+        OPENAI_CLIP_MEAN if args.embedding_model == "clip" else [0.485, 0.456, 0.406]
+    )
+    embedding_std = (
+        OPENAI_CLIP_STD if args.embedding_model == "clip" else [0.229, 0.224, 0.225]
+    )
     embedding_transforms = transforms.Compose(
         [
             # [0..255] -> [0:1]
             transforms.ToDtype(torch.float32, True),
-            transforms.Normalize(OPENAI_CLIP_MEAN, OPENAI_CLIP_STD),
+            transforms.Normalize(embedding_mean, embedding_std),
         ]
     )
 

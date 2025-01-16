@@ -281,9 +281,9 @@ def main(args: VisRepLeaArgs):
     test_dataset = dataset["test"]
 
     def collate_fn(examples):
-        pixel_values = train_transforms(
-            [example["pixel_values"] for example in examples]
-        )
+        pixel_values = [
+            train_transforms(example["pixel_values"]) for example in examples
+        ]
         pixel_values = torch.stack(pixel_values)
         pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
 
@@ -295,9 +295,9 @@ def main(args: VisRepLeaArgs):
 
     def test_collate_fn(examples):
         latent = torch.stack([example["latent"] for example in examples])
-        pixel_values = test_transforms(
-            [example["pixel_values"] for example in examples]
-        )
+        pixel_values = [
+            test_transforms(example["pixel_values"]) for example in examples
+        ]
         pixel_values = torch.stack(pixel_values)
         pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
         return {"latent": latent, "sd_images": pixel_values}
