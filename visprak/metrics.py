@@ -126,7 +126,7 @@ def log_validation(
         f"global_step_{'final' if save_model else global_step}",
     )
     os.makedirs(save_dir, exist_ok=True)
-    for i, (image, orig_image) in enumerate(zip(pil_images, orig_pil_images)):
+    for i, (image, orig_image) in enumerate(zip(tqdm(pil_images, desc="Saving images", leave=False), orig_pil_images)):
         image.save(os.path.join(save_dir, f"{i:05d}_output.png"))
         orig_image.save(os.path.join(save_dir, f"{i:05d}_target.png"))
 
