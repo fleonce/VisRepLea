@@ -103,6 +103,7 @@ def preprocess_inputs(args: PreprocessArgs):
     embedding_transforms = transforms.Compose(
         [
             # [0..255] -> [0:1]
+            transforms.ToDtype(torch.uint8, False),
             transforms.ToDtype(torch.float32, True),
             transforms.Normalize(embedding_mean, embedding_std),
         ]
@@ -161,10 +162,10 @@ def preprocess_inputs(args: PreprocessArgs):
     )
 
     def embedding_fn(examples):
+        input_pixels = examples["pixel_values"]
         with torch.no_grad():
-            inputs = embedding_transforms(examples["pixel_values"]).to(
-                args.embedding_device
-            )
+            inputs = embedding_transforms(input_pixels).to(args.embedding_device)
+            assert inputs.unique().numel() > inputs.size(0)
             outputs = image_model(inputs)[0]
         examples["latent"] = outputs
         return examples
