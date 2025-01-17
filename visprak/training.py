@@ -668,7 +668,7 @@ def main(args: VisRepLeaArgs):
             weight_dtype,
             global_step,
             test_dataloader,
-            save_model=False,
+            save_model=True,
         )
 
     accelerator.end_training()
