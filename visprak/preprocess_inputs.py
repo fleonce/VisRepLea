@@ -5,7 +5,7 @@ from typing import Literal
 
 import torch
 import torchvision.transforms.v2 as transforms
-from datasets import load_dataset
+from datasets import Dataset, load_dataset
 from transformers import CLIPVisionModel
 from transformers.models.ijepa.modular_ijepa import IJepaModel
 from transformers.utils.constants import OPENAI_CLIP_MEAN, OPENAI_CLIP_STD
@@ -31,6 +31,7 @@ class PreprocessArgs:
     seed: int = 42
     max_train_samples: int | None = None
     max_test_samples: int | None = None
+    use_streaming: bool = False
 
 
 @with_dataclass(dataclass=PreprocessArgs)
@@ -41,7 +42,10 @@ def preprocess_inputs(args: PreprocessArgs):
             dataset_url,
             cache_dir=args.cache_dir,
             # data_dir=args.data_dir,
+            streaming=args.use_streaming,
         )
+        if args.use_streaming:
+            dataset = Dataset.from_generator(dataset.__iter__)
     else:
         raise NotImplementedError(args.dataset)
 
@@ -103,6 +107,7 @@ def preprocess_inputs(args: PreprocessArgs):
     embedding_transforms = transforms.Compose(
         [
             # [0..255] -> [0:1]
+            transforms.ToDtype(torch.uint8, False),
             transforms.ToDtype(torch.float32, True),
             transforms.Normalize(embedding_mean, embedding_std),
         ]
@@ -161,10 +166,10 @@ def preprocess_inputs(args: PreprocessArgs):
     )
 
     def embedding_fn(examples):
+        input_pixels = examples["pixel_values"]
         with torch.no_grad():
-            inputs = embedding_transforms(examples["pixel_values"]).to(
-                args.embedding_device
-            )
+            inputs = embedding_transforms(input_pixels).to(args.embedding_device)
+            assert inputs.unique().numel() > inputs.size(0)
             outputs = image_model(inputs)[0]
         examples["latent"] = outputs
         return examples
