@@ -133,6 +133,15 @@ def main(args: VisRepLeaArgs):
     freeze_unet_except_for_cross_attn(unet)
     unet.train()
 
+    num_trainable_params, num_trainable = 0, 0
+    for name, param in unet.named_parameters():
+        if param.requires_grad:
+            logger.info(f"Training parameter {name} ({param.shape})")
+            num_trainable_params += param.numel()
+            num_trainable += 1
+    logger.info(f"In total, training {num_trainable_params} parameters "
+                f"({num_trainable} params)")
+
     # Create EMA for the unet.
     if args.use_ema:
         ema_unet = UNet2DConditionModel.from_pretrained(

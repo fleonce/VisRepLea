@@ -13,5 +13,8 @@ DATASET_NAME_MAPPING = {
 
 def freeze_unet_except_for_cross_attn(unet: UNet2DConditionModel):
     for name, param in unet.named_parameters():
-        if "attention" in name:
-            param.requires_grad_(False)
+        trainable = (
+            "attn2" in name
+            and ("to_k" in name or "to_v" in name)
+        )
+        param.requires_grad = trainable

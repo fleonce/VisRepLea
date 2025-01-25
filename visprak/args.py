@@ -10,7 +10,7 @@ logger = get_logger(__name__, log_level="INFO")
 class VisRepLeaArgs:
     """
     Arguments setup for the "Praktikum Visual Representation Learning"
-    assignment on comparing richness of information in CLIP and I-JEPA
+    assignment on comparing richness of information in CLIP and I-JEPA embeddings
     """
 
     diffusion_model: str = "CompVis/stable-diffusion-v1-4"
