@@ -52,7 +52,7 @@ def generate_images(
         scheduler=noise_scheduler,
         safety_checker=None,
         requires_safety_checker=False,
-    )
+    ).to(device)
 
     test_dataloader = DataLoader(
         test_dataset,
