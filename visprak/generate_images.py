@@ -73,16 +73,19 @@ def generate_images(
     for batch in tqdm(
         test_dataloader, leave=False, desc="Diffusing validation images ..."
     ):
-        with torch.autocast("cuda", torch.bfloat16):
-            generation = pipeline(
-                batch["latent"].to(device),
-                num_inference_steps=inference_steps,
-                generator=generator,
-                width=resolution,
-                height=resolution,
-            )
-        orig_images.extend(batch["sd_images"].unbind())
-        images.extend(to_tensor(generation.images))
+        try:
+            with torch.autocast("cuda", torch.bfloat16):
+                generation = pipeline(
+                    batch["latent"].to(device),
+                    num_inference_steps=inference_steps,
+                    generator=generator,
+                    width=resolution,
+                    height=resolution,
+                )
+            orig_images.extend(batch["sd_images"].unbind())
+            images.extend(to_tensor(generation.images))
+        except KeyboardInterrupt:
+            break
 
     images = torch.stack(images, dim=0)
     orig_images = torch.stack(orig_images, dim=0)
