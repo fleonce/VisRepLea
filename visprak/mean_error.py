@@ -35,11 +35,11 @@ def mean_error(
     outputs = list()
     targets = list()
     for i in trange(n_images):
-        outputs.append(Image.open(directory / f"{i:05d}_output.png"))
-        targets.append(Image.open(directory / f"{i:05d}_target.png"))
+        outputs.append(input_transforms(Image.open(directory / f"{i:05d}_output.png")))
+        targets.append(input_transforms(Image.open(directory / f"{i:05d}_target.png")))
 
-    output_tensors = torch.stack(input_transforms(outputs))
-    target_tensors = torch.stack(input_transforms(targets))
+    output_tensors = torch.stack(outputs)
+    target_tensors = torch.stack(outputs)
 
     print("min, max", *output_tensors[0].aminmax())
 
