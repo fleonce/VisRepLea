@@ -4,12 +4,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from accelerate import Accelerator
-from diffusers import (
-    AutoencoderKL,
-    DDPMScheduler,
-    StableDiffusionImageVariationPipeline,
-    UNet2DConditionModel,
-)
+from diffusers import AutoencoderKL, DDPMScheduler, UNet2DConditionModel
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
 from scipy import linalg
 from torch.utils.data import DataLoader
@@ -17,42 +12,7 @@ from torchvision.transforms.v2 import ToPILImage, ToTensor
 from tqdm import tqdm
 
 from visprak.args import VisRepLeaArgs
-
-
-class StableDiffusionImageVariationPipeline(StableDiffusionImageVariationPipeline):
-    def _encode_image(
-        self, image, device, num_images_per_prompt, do_classifier_free_guidance
-    ):
-        dtype = torch.float32  # next(self.image_encoder.parameters()).dtype
-
-        if not isinstance(image, torch.Tensor):
-            image = self.feature_extractor(
-                images=image, return_tensors="pt"
-            ).pixel_values
-
-        image_embeddings = image.to(device=device, dtype=dtype)
-        # image_embeddings = self.image_encoder(image).image_embeds
-        # [BS, hidden dimension]
-        if image_embeddings.dim() <= 2:
-            image_embeddings = image_embeddings.unsqueeze(1)
-        # [BS, sequence length, hidden dimension]
-
-        # duplicate image embeddings for each generation per prompt, using mps friendly method
-        bs_embed, seq_len, _ = image_embeddings.shape
-        image_embeddings = image_embeddings.repeat(1, num_images_per_prompt, 1)
-        image_embeddings = image_embeddings.view(
-            bs_embed * num_images_per_prompt, seq_len, -1
-        )
-
-        if do_classifier_free_guidance:
-            negative_prompt_embeds = torch.zeros_like(image_embeddings)
-
-            # For classifier free guidance, we need to do two forward passes.
-            # Here we concatenate the unconditional and text embeddings into a single batch
-            # to avoid doing two forward passes
-            image_embeddings = torch.cat([negative_prompt_embeds, image_embeddings])
-
-        return image_embeddings
+from visprak.pipeline import StableDiffusionPreprocessedImagesPipeline
 
 
 def log_validation(
@@ -71,7 +31,7 @@ def log_validation(
 
     derived from https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/train_text_to_image.py
     """
-    pipeline = StableDiffusionImageVariationPipeline(
+    pipeline = StableDiffusionPreprocessedImagesPipeline(
         vae=vae,
         image_encoder=None,
         unet=unet,
@@ -126,7 +86,9 @@ def log_validation(
         f"global_step_{'final' if save_model else global_step}",
     )
     os.makedirs(save_dir, exist_ok=True)
-    for i, (image, orig_image) in enumerate(zip(tqdm(pil_images, desc="Saving images", leave=False), orig_pil_images)):
+    for i, (image, orig_image) in enumerate(
+        zip(tqdm(pil_images, desc="Saving images", leave=False), orig_pil_images)
+    ):
         image.save(os.path.join(save_dir, f"{i:05d}_output.png"))
         orig_image.save(os.path.join(save_dir, f"{i:05d}_target.png"))
 

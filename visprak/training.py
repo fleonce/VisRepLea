@@ -1,6 +1,7 @@
 import logging
 import math
 import os
+import shutil
 
 import accelerate
 import datasets

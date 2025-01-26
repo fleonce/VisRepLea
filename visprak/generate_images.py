@@ -9,7 +9,7 @@ from torchvision.transforms.v2 import ToPILImage, ToTensor
 from tqdm import tqdm
 from with_argparse import with_argparse
 
-from visprak.metrics import StableDiffusionImageVariationPipeline
+from visprak.pipeline import StableDiffusionPreprocessedImagesPipeline
 from visprak.training import test_collate_fn
 
 
@@ -18,7 +18,7 @@ def generate_images(
     unet_path: Path,
     dataset_path: Path,
     output_path: Path,
-    inference_steps: int,
+    inference_steps: list[int],
     diffusion_model: str = "CompVis/stable-diffusion-v1-4",
     batch_size: int = 64,
     dataloader_num_workers: int = 0,
@@ -44,7 +44,7 @@ def generate_images(
         diffusion_model, subfolder="scheduler"
     )
 
-    pipeline = StableDiffusionImageVariationPipeline(
+    pipeline = StableDiffusionPreprocessedImagesPipeline(
         vae=vae,
         image_encoder=None,
         unet=unet,
@@ -67,6 +67,27 @@ def generate_images(
     else:
         generator = torch.Generator(device=device).manual_seed(seed)
 
+    for inference_steps in inference_steps:
+        generate_and_save_images(
+            output_path / f"inference_steps-{inference_steps}",
+            inference_steps,
+            generator,
+            test_dataloader,
+            pipeline,
+            device,
+            resolution,
+        )
+
+
+def generate_and_save_images(
+    output_path: Path,
+    inference_steps: int,
+    generator: torch.Generator,
+    test_dataloader: torch.utils.data.DataLoader,
+    pipeline: StableDiffusionPreprocessedImagesPipeline,
+    device: str | torch.device,
+    resolution: int,
+):
     images = list()
     orig_images = list()
     to_tensor = ToTensor()
@@ -95,13 +116,12 @@ def generate_images(
     orig_pil_images = [to_pil(image) for image in orig_images]
 
     os.makedirs(output_path, exist_ok=True)
+    print("Saving images to", output_path.as_posix())
     for i, (image, orig_image) in enumerate(
         zip(tqdm(pil_images, desc="Saving images", leave=False), orig_pil_images)
     ):
         image.save(os.path.join(output_path, f"{i:05d}_output.png"))
         orig_image.save(os.path.join(output_path, f"{i:05d}_target.png"))
-
-    pass
 
 
 generate_images()

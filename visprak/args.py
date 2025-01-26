@@ -70,7 +70,7 @@ class VisRepLeaArgs:
     mixed_precision: Literal["no", "fp16", "bf16"] = "no"
     report_to: Literal["tensorboard", "wandb", "comet_ml", "all"] = "tensorboard"
     local_rank: int = -1
-    checkpointing_steps: int = 500
+    checkpointing_steps: int = 10000
     checkpoints_total_limit: int | None = None
     resume_from_checkpoint: str | None = None
     enable_xformers_memory_efficient_attention: bool = False
