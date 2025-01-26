@@ -7,11 +7,13 @@ from diffusers import AutoencoderKL, DDPMScheduler, UNet2DConditionModel
 from torch.utils.data import DataLoader
 from torchvision.transforms.v2 import ToPILImage, ToTensor
 from tqdm import tqdm
+from with_argparse import with_argparse
 
 from visprak.metrics import StableDiffusionImageVariationPipeline
 from visprak.training import test_collate_fn
 
 
+@with_argparse
 def generate_images(
     unet_path: Path,
     dataset_path: Path,
