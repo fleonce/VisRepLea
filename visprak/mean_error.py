@@ -45,7 +45,7 @@ def mean_error(
 
     n_slices = math.ceil(n_images / batch_size)
     mse_sum = 0
-    for output_batch, target_batch in (
+    for output_batch, target_batch in zip(
         torch.tensor_split(output_tensors, n_slices, dim=0),
         torch.tensor_split(target_tensors, n_slices, dim=0),
     ):
