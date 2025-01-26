@@ -32,6 +32,20 @@ from visprak.metrics import log_validation
 from visprak.utils import freeze_unet_except_for_cross_attn
 
 logger = get_logger(__name__, log_level="INFO")
+test_transforms = transforms.Compose(
+    [
+        transforms.ToDtype(torch.uint8),
+        transforms.ToDtype(torch.float32, scale=True),
+    ]
+)
+
+
+def test_collate_fn(examples):
+    latent = torch.stack([example["latent"] for example in examples])
+    pixel_values = [test_transforms(example["pixel_values"]) for example in examples]
+    pixel_values = torch.stack(pixel_values)
+    pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
+    return {"latent": latent, "sd_images": pixel_values}
 
 
 @with_dataclass(dataclass=VisRepLeaArgs)
@@ -139,8 +153,10 @@ def main(args: VisRepLeaArgs):
             logger.info(f"Training parameter {name} ({param.shape})")
             num_trainable_params += param.numel()
             num_trainable += 1
-    logger.info(f"In total, training {num_trainable_params} parameters "
-                f"({num_trainable} params)")
+    logger.info(
+        f"In total, training {num_trainable_params} parameters "
+        f"({num_trainable} params)"
+    )
 
     # Create EMA for the unet.
     if args.use_ema:
@@ -279,12 +295,6 @@ def main(args: VisRepLeaArgs):
             transforms.Normalize([0.5], [0.5]),
         ]
     )
-    test_transforms = transforms.Compose(
-        [
-            transforms.ToDtype(torch.uint8),
-            transforms.ToDtype(torch.float32, scale=True),
-        ]
-    )
 
     train_dataset = dataset["train"]
     test_dataset = dataset["test"]
@@ -301,15 +311,6 @@ def main(args: VisRepLeaArgs):
             "pixel_values": pixel_values,
             "latent": latent,
         }
-
-    def test_collate_fn(examples):
-        latent = torch.stack([example["latent"] for example in examples])
-        pixel_values = [
-            test_transforms(example["pixel_values"]) for example in examples
-        ]
-        pixel_values = torch.stack(pixel_values)
-        pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
-        return {"latent": latent, "sd_images": pixel_values}
 
     # DataLoaders creation:
     train_dataloader = DataLoader(
