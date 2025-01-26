@@ -53,6 +53,7 @@ def generate_images(
         safety_checker=None,
         requires_safety_checker=False,
     ).to(device)
+    pipeline.set_progress_bar_config(disable=True)
 
     test_dataloader = DataLoader(
         test_dataset,
