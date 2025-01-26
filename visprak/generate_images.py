@@ -31,7 +31,7 @@ def generate_images(
     assert dataset_path.exists()
     assert dataset_path.is_dir()
 
-    test_dataset = load_from_disk(dataset_path)["test"]
+    test_dataset = load_from_disk(dataset_path)
 
     vae = AutoencoderKL.from_pretrained(
         diffusion_model,
