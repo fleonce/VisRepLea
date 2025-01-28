@@ -25,6 +25,7 @@ def generate_images(
     seed: int = 42,
     device: str = "cuda",
     resolution: int = 224,
+    num_batches: int = 0,
 ):
     assert unet_path.exists()
     assert unet_path.is_dir()
@@ -77,6 +78,7 @@ def generate_images(
             pipeline,
             device,
             resolution,
+            num_batches,
         )
 
 
@@ -88,13 +90,21 @@ def generate_and_save_images(
     pipeline: StableDiffusionPreprocessedImagesPipeline,
     device: str | torch.device,
     resolution: int,
+    num_batches: int,
 ):
     images = list()
     orig_images = list()
     to_tensor = ToTensor()
-    for batch in tqdm(
-        test_dataloader, leave=False, desc="Diffusing validation images ..."
+    for i, batch in enumerate(
+        tqdm(
+            test_dataloader,
+            leave=False,
+            desc="Diffusing validation images ...",
+            total=num_batches or len(test_dataloader),
+        )
     ):
+        if i >= num_batches:
+            break
         try:
             with torch.autocast("cuda", torch.bfloat16):
                 generation = pipeline(
