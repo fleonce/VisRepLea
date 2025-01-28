@@ -39,7 +39,7 @@ def mean_error(
         targets.append(input_transforms(Image.open(directory / f"{i:05d}_target.png")))
 
     output_tensors = torch.stack(outputs)
-    target_tensors = torch.stack(outputs)
+    target_tensors = torch.stack(targets)
 
     print("min, max", *output_tensors[0].aminmax())
 
