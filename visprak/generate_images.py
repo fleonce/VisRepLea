@@ -103,7 +103,7 @@ def generate_and_save_images(
             total=num_batches or len(test_dataloader),
         )
     ):
-        if i >= num_batches:
+        if i >= num_batches and num_batches:
             break
         try:
             with torch.autocast("cuda", torch.bfloat16):
