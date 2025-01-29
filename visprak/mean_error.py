@@ -45,15 +45,21 @@ def mean_error(
 
     n_slices = math.ceil(n_images / batch_size)
     mse_sum = 0
+    mse_vec = None
     for output_batch, target_batch in zip(
         torch.tensor_split(output_tensors, n_slices, dim=0),
         torch.tensor_split(target_tensors, n_slices, dim=0),
     ):
-        mse_sum += (
-            mse_loss(output_batch, target_batch, reduction="none")
-            .mean(dim=(1, 2, 3))
-            .sum()
+        mean = mse_loss(output_batch, target_batch, reduction="none").mean(
+            dim=(1, 2, 3)
         )
+        if mse_vec is None:
+            mse_vec = mean
+        else:
+            mse_vec = torch.cat((mse_vec, mean), dim=0)
+        mse_sum += mean.sum()
+
+    torch.save(mse_vec, "mse.bin")
     print("mean mse", mse_sum / n_images)
 
 
