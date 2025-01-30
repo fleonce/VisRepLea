@@ -6,7 +6,7 @@ from with_argparse import with_argparse
 
 @with_argparse
 def prepare_flickr(save_path: Path):
-    dataset = load_dataset("nlphuji/flickr30k", split="test")
+    dataset = load_dataset("nlphuji/flickr30k")
     dataset = dataset.filter(lambda x: x["split"] == "test")
     dataset.save_to_disk(save_path)
 
