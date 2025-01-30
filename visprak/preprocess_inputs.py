@@ -51,7 +51,11 @@ def preprocess_inputs(args: PreprocessArgs):
 
     # Preprocessing the datasets.
     # We need to tokenize inputs and targets.
-    column_names = dataset["train"].column_names
+    column_names = (
+        dataset["train"].column_names
+        if "train" in dataset
+        else dataset["test"].column_names
+    )
 
     # 6. Get the column names for input/target.
     dataset_columns = DATASET_NAME_MAPPING.get(args.dataset, None)
@@ -132,38 +136,44 @@ def preprocess_inputs(args: PreprocessArgs):
         )
         return examples
 
-    if args.max_train_samples is not None:
+    if args.max_train_samples is not None and "train" in dataset:
         dataset["train"] = (
             dataset["train"]
             .shuffle(seed=args.seed)
             .select(range(args.max_train_samples))
         )
-    if args.max_test_samples is not None:
+    if args.max_test_samples is not None and "test" in dataset:
         dataset["test"] = (
             dataset["test"].shuffle(seed=args.seed).select(range(args.max_test_samples))
         )
 
     preprocess_desc = "Applying torchvision transforms"
-    test_dataset = (
-        dataset["test"]
-        .map(
-            partial(preprocess_fn, is_train=False),
-            batched=True,
-            remove_columns=column_names,
-            desc=preprocess_desc,
+    if "test" in dataset:
+        test_dataset = (
+            dataset["test"]
+            .map(
+                partial(preprocess_fn, is_train=False),
+                batched=True,
+                remove_columns=column_names,
+                desc=preprocess_desc,
+            )
+            .with_format("torch")
         )
-        .with_format("torch")
-    )
-    train_dataset = (
-        dataset["train"]
-        .map(
-            partial(preprocess_fn, is_train=True),
-            batched=True,
-            remove_columns=column_names,
-            desc=preprocess_desc,
+    else:
+        test_dataset = None
+    if "train" in dataset:
+        train_dataset = (
+            dataset["train"]
+            .map(
+                partial(preprocess_fn, is_train=True),
+                batched=True,
+                remove_columns=column_names,
+                desc=preprocess_desc,
+            )
+            .with_format("torch")
         )
-        .with_format("torch")
-    )
+    else:
+        train_dataset = None
 
     def embedding_fn(examples):
         input_pixels = examples["pixel_values"]
@@ -175,20 +185,31 @@ def preprocess_inputs(args: PreprocessArgs):
         return examples
 
     embedding_desc = "Retrieving latents from " + args.embedding_model
-    test_dataset = test_dataset.map(
-        embedding_fn,
-        batched=True,
-        batch_size=args.batch_size,
-        desc=embedding_desc,
+    test_dataset = (
+        test_dataset.map(
+            embedding_fn,
+            batched=True,
+            batch_size=args.batch_size,
+            desc=embedding_desc,
+        )
+        if test_dataset
+        else None
     )
-    train_dataset = train_dataset.map(
-        embedding_fn,
-        batched=True,
-        batch_size=args.batch_size,
-        desc=embedding_desc,
+    train_dataset = (
+        train_dataset.map(
+            embedding_fn,
+            batched=True,
+            batch_size=args.batch_size,
+            desc=embedding_desc,
+        )
+        if train_dataset
+        else None
     )
-    train_dataset.save_to_disk(os.path.join(args.data_dir, "train"))
-    test_dataset.save_to_disk(os.path.join(args.data_dir, "test"))
+
+    if train_dataset:
+        train_dataset.save_to_disk(os.path.join(args.data_dir, "train"))
+    if test_dataset:
+        test_dataset.save_to_disk(os.path.join(args.data_dir, "test"))
 
 
 if __name__ == "__main__":
