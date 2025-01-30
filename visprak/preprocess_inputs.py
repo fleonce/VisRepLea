@@ -5,7 +5,7 @@ from typing import Literal
 
 import torch
 import torchvision.transforms.v2 as transforms
-from datasets import Dataset, load_dataset
+from datasets import Dataset, load_dataset, load_from_disk
 from transformers import CLIPVisionModel
 from transformers.models.ijepa.modular_ijepa import IJepaModel
 from transformers.utils.constants import OPENAI_CLIP_MEAN, OPENAI_CLIP_STD
@@ -17,7 +17,7 @@ from visprak.utils import DATASET_NAME_MAPPING, DATASET_URL_MAPPING
 @dataclass
 class PreprocessArgs:
     embedding_model: Literal["clip", "i-jepa"]
-    dataset: Literal["cifar10", "imagenet"]
+    dataset: str
     data_dir: str
     embedding_device: str = "cuda"
     batch_size: int = 128
@@ -47,7 +47,7 @@ def preprocess_inputs(args: PreprocessArgs):
         if args.use_streaming:
             dataset = Dataset.from_generator(dataset.__iter__)
     else:
-        raise NotImplementedError(args.dataset)
+        dataset = load_from_disk(args.dataset)
 
     # Preprocessing the datasets.
     # We need to tokenize inputs and targets.

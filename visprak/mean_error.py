@@ -59,7 +59,7 @@ def mean_error(
             mse_vec = torch.cat((mse_vec, mean), dim=0)
         mse_sum += mean.sum()
 
-    torch.save(mse_vec, "mse.bin")
+    torch.save(mse_vec, directory.parent / "mse.bin")
     print("mean mse", mse_sum / n_images)
 
 
