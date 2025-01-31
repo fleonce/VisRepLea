@@ -1,5 +1,6 @@
 import math
 from pathlib import Path
+from typing import Optional
 
 import torch
 import torchvision.transforms.v2 as transforms
@@ -15,6 +16,7 @@ def mean_error(
     directory: Path,
     n_images: int,
     batch_size: int,
+    target_directory: Optional[Path] = None,
 ):
     """
     Compute the mean squared error between pairs of images, given a directory and the number of pairs inside
@@ -22,11 +24,13 @@ def mean_error(
     Args:
         directory (Path): The directory where the files are located.
             The images must be named the following way: `%05d_output.png` and `%05d_target.png`
+        target_directory (Path): The directory where the target files are located.
         n_images (int): The number of images that should be compared.
         batch_size (int): The batch size for MSE calculation.
 
     Author: Moritz
     """
+    target_directory = target_directory or directory
 
     input_transforms = transforms.Compose(
         (transforms.ToImage(), transforms.ToDtype(torch.float32, scale=True))
@@ -36,7 +40,7 @@ def mean_error(
     targets = list()
     for i in trange(n_images):
         outputs.append(input_transforms(Image.open(directory / f"{i:05d}_output.png")))
-        targets.append(input_transforms(Image.open(directory / f"{i:05d}_target.png")))
+        targets.append(input_transforms(Image.open(target_directory / f"{i:05d}_target.png")))
 
     output_tensors = torch.stack(outputs)
     target_tensors = torch.stack(targets)
