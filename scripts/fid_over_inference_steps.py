@@ -6,14 +6,20 @@ import torch
 from with_argparse import with_argparse
 
 mpl.rcParams["text.usetex"] = True
-
+DS_NAMES = {
+    "imagenet": "ImageNet",
+    "cifar10": "CIFAR10",
+    "flickr30": "Flickr30K"
+}
 
 @with_argparse
-def mse_over_time(
+def fid_over_time(
     dataset: Literal["cifar10", "imagenet", "flickr30"],
+    model: Literal["inceptionv3", "dinov2"] = "inceptionv3",
+    time_is_train_time: bool = False,
 ):
     """
-    Generate the plot for FID improving with the number of inference steps
+    Generate the plot for FID/FDD improving with the number of inference steps
 
     Author: Moritz
     """
@@ -21,24 +27,36 @@ def mse_over_time(
     fig, ax = plt.subplots(layout="constrained", figsize=(4, 3))
     cmap = mpl.colormaps["tab20c"].colors
 
-    labels = [10, 25, 50, 75]
-    if dataset == "cifar10":
-        clip = torch.tensor([215.178, 139.087, 98.795, 85.194])
-        ijepa = torch.tensor([219.167, 151.526, 114.596, 92.782])
-    elif dataset == "imagenet":
-        clip = torch.tensor([161.554, 65.59, 24.993, 21.871])
-        ijepa = torch.tensor([176.248, 98.082, 25.323, 14.825])
-    elif dataset == "flickr30":
-        clip = torch.tensor([84.157, 49.832, 34.399, 28.476, 25.441, 22.755, 22.327])
-        ijepa = torch.tensor([256.227, 63.253, 39.097, 29.979, 25.184, 20.009, 19.038])
-        labels = [10, 20, 30, 40, 50, 75, 100]
+    labels = [10, 25, 50, 75, 100]
+    if model == "inceptionv3":
+        if dataset == "cifar10":
+            clip = torch.tensor([215.178, 139.087, 98.795, 85.194])
+            ijepa = torch.tensor([219.167, 151.526, 114.596, 92.782])
+        elif dataset == "imagenet":
+            clip = torch.tensor([161.554, 65.59, 24.993, 21.871, 22.464465777922044])
+            ijepa = torch.tensor([176.248, 98.082, 25.323, 14.825, 13.728435742051772])
+        elif dataset == "flickr30":
+            clip = torch.tensor([84.157, 49.832, 34.399, 28.476, 25.441, 22.755, 22.327])
+            ijepa = torch.tensor([256.227, 63.253, 39.097, 29.979, 25.184, 20.009, 19.038])
+            labels = [10, 20, 30, 40, 50, 75, 100]
+        else:
+            raise NotImplementedError(dataset)
+    elif model == "dinov2":
+        if dataset == "imagenet":
+            clip = torch.tensor([483.6327177186031, 398.37649185707915, 345.71003124376693, 319.4035108013868, 316.12718639328614])
+            ijepa = torch.tensor([353.0907041265755, 272.19966455823305, 235.78038411127727, 221.99693286199363, 216.6956576528064])
+            labels = [10, 20, 30, 40, 50, 60, 70, 80]
+            labels = [f"{n}K" for n in labels]
+            labels = labels[:clip.numel()]
+        else:
+            raise NotImplementedError(dataset)
     else:
-        raise NotImplementedError(dataset)
+        raise NotImplementedError(model)
 
     ticks = list(range(clip.numel()))
 
     ax.set_xticks(ticks, labels)
-    ax.set_xlabel(r"\# Diffusion Steps")
+    ax.set_xlabel(r"\# Diffusion Steps" if not time_is_train_time else r"\# Training Steps")
     ax.plot(
         ticks,
         ijepa,
@@ -61,11 +79,12 @@ def mse_over_time(
         markerfacecolor=cmap[12],
         label="CLIP",
     )
-    ax.set_title("ImageNet" if dataset == "imagenet" else "CIFAR10")
+    ylabel = "FID" if model == "inceptionv3" else "FDD"
+    ax.set_title(DS_NAMES.get(dataset, dataset) + rf" -- {ylabel}")
 
-    ax.set_ylabel("FID")
+    ax.set_ylabel(ylabel)
     fig.legend(loc="upper right", bbox_to_anchor=(0, 0, 0.96, 0.92))
-    fig.savefig(dataset + "_fid.pdf")
+    fig.savefig(dataset + f"_{ylabel.lower()}.pdf")
 
 
-mse_over_time()
+fid_over_time()

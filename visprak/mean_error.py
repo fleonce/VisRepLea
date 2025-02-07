@@ -13,7 +13,7 @@ from with_argparse import with_argparse
 @torch.no_grad()
 @with_argparse
 def mean_error(
-    directory: Path,
+    directories: list[Path],
     n_images: int,
     batch_size: int,
     target_directory: Optional[Path] = None,
@@ -30,6 +30,17 @@ def mean_error(
 
     Author: Moritz
     """
+    for directory in directories:
+        _mean_error(
+            directory, n_images, batch_size, target_directory
+        )
+
+def _mean_error(
+    directory: Path,
+    n_images: int,
+    batch_size: int,
+    target_directory: Optional[Path] = None
+):
     target_directory = target_directory or directory
 
     input_transforms = transforms.Compose(
