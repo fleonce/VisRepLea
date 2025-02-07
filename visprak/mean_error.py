@@ -41,6 +41,7 @@ def _mean_error(
     batch_size: int,
     target_directory: Optional[Path] = None
 ):
+    print(directory.as_posix())
     target_directory = target_directory or directory
 
     input_transforms = transforms.Compose(
