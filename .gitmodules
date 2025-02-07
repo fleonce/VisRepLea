@@ -1,3 +1,6 @@
 [submodule "external/pytorch_fid"]
 	path = external/pytorch_fid
 	url = https://github.com/mseitzer/pytorch-fid.git
+[submodule "external/fdd"]
+	path = external/fdd
+	url = https://github.com/STomoya/ptfid.git
