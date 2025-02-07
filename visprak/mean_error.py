@@ -13,7 +13,7 @@ from with_argparse import with_argparse
 @torch.no_grad()
 @with_argparse(use_glob={"directories"}, ignore_mapping={"directories"})
 def mean_error(
-    directories: list[Path],
+    directory: list[Path],
     n_images: int,
     batch_size: int,
     target_directory: Optional[Path] = None,
@@ -22,7 +22,7 @@ def mean_error(
     Compute the mean squared error between pairs of images, given a directory and the number of pairs inside
 
     Args:
-        directories (Path): The directory where the files are located.
+        directory (list[Path]): The directory where the files are located.
             The images must be named the following way: `%05d_output.png` and `%05d_target.png`
         target_directory (Path): The directory where the target files are located.
         n_images (int): The number of images that should be compared.
@@ -30,16 +30,15 @@ def mean_error(
 
     Author: Moritz
     """
-    for directory in directories:
-        _mean_error(
-            directory, n_images, batch_size, target_directory
-        )
+    for directory in directory:
+        _mean_error(directory, n_images, batch_size, target_directory)
+
 
 def _mean_error(
     directory: Path,
     n_images: int,
     batch_size: int,
-    target_directory: Optional[Path] = None
+    target_directory: Optional[Path] = None,
 ):
     print(directory.as_posix())
     target_directory = target_directory or directory
@@ -52,7 +51,9 @@ def _mean_error(
     targets = list()
     for i in trange(n_images):
         outputs.append(input_transforms(Image.open(directory / f"{i:05d}_output.png")))
-        targets.append(input_transforms(Image.open(target_directory / f"{i:05d}_target.png")))
+        targets.append(
+            input_transforms(Image.open(target_directory / f"{i:05d}_target.png"))
+        )
 
     output_tensors = torch.stack(outputs)
     target_tensors = torch.stack(targets)
