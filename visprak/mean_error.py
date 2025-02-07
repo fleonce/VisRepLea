@@ -11,7 +11,7 @@ from with_argparse import with_argparse
 
 
 @torch.no_grad()
-@with_argparse
+@with_argparse(use_glob={"directories"})
 def mean_error(
     directories: list[Path],
     n_images: int,
@@ -22,7 +22,7 @@ def mean_error(
     Compute the mean squared error between pairs of images, given a directory and the number of pairs inside
 
     Args:
-        directory (Path): The directory where the files are located.
+        directories (Path): The directory where the files are located.
             The images must be named the following way: `%05d_output.png` and `%05d_target.png`
         target_directory (Path): The directory where the target files are located.
         n_images (int): The number of images that should be compared.
