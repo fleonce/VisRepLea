@@ -11,7 +11,7 @@ from with_argparse import with_argparse
 
 
 @torch.no_grad()
-@with_argparse(use_glob={"directories"})
+@with_argparse(use_glob={"directories"}, ignore_mapping={"directories"})
 def mean_error(
     directories: list[Path],
     n_images: int,
