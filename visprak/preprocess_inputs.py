@@ -5,7 +5,7 @@ from typing import Literal
 
 import torch
 import torchvision.transforms.v2 as transforms
-from datasets import Dataset, load_dataset, load_from_disk
+from datasets import load_dataset, load_from_disk
 from transformers import CLIPVisionModel
 from transformers.models.ijepa.modular_ijepa import IJepaModel
 from transformers.utils.constants import OPENAI_CLIP_MEAN, OPENAI_CLIP_STD
@@ -27,11 +27,9 @@ class PreprocessArgs:
     resolution: int = 224
     center_crop: bool = False
     random_flip: bool = False
-    shard_size: int = 5000
     seed: int = 42
     max_train_samples: int | None = None
     max_test_samples: int | None = None
-    use_streaming: bool = False
 
 
 @with_dataclass(dataclass=PreprocessArgs)
@@ -41,11 +39,7 @@ def preprocess_inputs(args: PreprocessArgs):
         dataset = load_dataset(
             dataset_url,
             cache_dir=args.cache_dir,
-            # data_dir=args.data_dir,
-            streaming=args.use_streaming,
         )
-        if args.use_streaming:
-            dataset = Dataset.from_generator(dataset.__iter__)
     else:
         dataset = load_from_disk(args.dataset)
 
